@@ -57,7 +57,7 @@ begin
         ReadData     => DataOut
     );
 
-    SizeCounter: process(Clock, Resetn, SoftReset)
+    SizeCounter: process(Clock, Resetn)
     begin
         if Resetn = '0' then
             size <= 0;
