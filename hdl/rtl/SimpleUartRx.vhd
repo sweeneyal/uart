@@ -4,31 +4,35 @@ library ieee;
 
 entity SimpleUartRx is
     generic (
-        cClockFrequency : natural := 10000000;
-        cUartBaudRate   : natural := 115200;
-        cNumBits        : natural := 8;
-        cClocksPerBit   : natural := cClockFrequency / cUartBaudRate
+        cClockFrequency : natural := 100000000;
+        cUartBaudRate   : natural := 115200
     );
     port (
         Clock  : in  std_logic;
+        Resetn : in  std_logic;
         Rx     : in  std_logic;
         Done   : out std_logic;
-        RxData : out std_logic_vector(cNumBits - 1 downto 0)
+        RxData : out std_logic_vector(7 downto 0)
     );
 end entity SimpleUartRx;
 
 architecture rtl of SimpleUartRx is
-    type state_t is (IDLE, START, DATA, STOPBITS, CLEANUP);
-    signal state        : state_t;
-    signal rxSample0    : std_logic;
-    signal rxSample1    : std_logic;
-    signal clockCounter : natural range 0 to cClocksPerBit - 1 := 0;
-    signal bitIndex     : natural range 0 to cNumBits - 1 := 0;
+    attribute DONT_TOUCH : boolean;
+    attribute DONT_TOUCH of rtl : architecture is true;
+    
+    constant cClocksPerBit : natural := 100000000 / 115200;
+    signal rxSample0       : std_logic := '1';
+    signal rxSample1       : std_logic := '1';
+    signal rxSample2       : std_logic := '1';
+    signal clockCounter    : natural range 0 to cClocksPerBit - 1 := 0;
+    signal bitCounter      : natural range 0 to 9 := 0;
+    signal data            : std_logic_vector(7 downto 0);
 begin
     
     SampleRx: process(Clock)
     begin
         if rising_edge(Clock) then
+            rxSample2 <= rxSample1;
             rxSample1 <= rxSample0;
             rxSample0 <= Rx;
         end if;
@@ -37,61 +41,30 @@ begin
     UartRxStateMachine: process(Clock)
     begin
         if rising_edge(Clock) then
-            case state is
-                when IDLE =>
-                    Done         <= '0';
-                    clockCounter <= 0;
-                    bitIndex     <= 0;
+            if clockCounter = 1 and bitCounter > 0 then
+                data <= rx & data(7 downto 1);
+            end if;
 
-                    if rxSample1 = '0' then
-                        state <= START;
-                    else
-                        state <= IDLE;
-                    end if;
-                when START =>
-                    if clockCounter = (cClocksPerBit - 1)/2 then
-                        if rxSample1 = '0' then
-                            clockCounter <= 0;
-                            state        <= DATA;
-                        else
-                            state <= IDLE;
-                        end if;
-                    else
-                        clockCounter <= clockCounter + 1;
-                        state        <= START;
-                    end if;
-                when DATA =>
-                    if clockCounter < cClocksPerBit - 1 then
-                        clockCounter <= clockCounter + 1;
-                        state        <= DATA;
-                    else
-                        clockCounter     <= 0;
-                        RxData(bitIndex) <= rxSample1;
+            if clockCounter = 1 and bitCounter = 0 then
+                Done <= rx;
+            else
+                Done <= '0';
+            end if;
 
-                        if bitIndex < cNumBits - 1 then
-                            bitIndex <= bitIndex + 1;
-                            state    <= DATA;
-                        else
-                            bitIndex <= 0;
-                            state    <= STOPBITS;
-                        end if;
-                    end if;
-                when STOPBITS =>
-                    if clockCounter < cClocksPerBit - 1 then
-                        clockCounter <= clockCounter + 1;
-                        state        <= STOPBITS;
-                    else
-                        done         <= '1';
-                        clockCounter <= 0;
-                        state        <= CLEANUP;
-                    end if;
-                when CLEANUP =>
-                    state <= IDLE;
-                    done  <= '0';
-                when others =>
-                    state <= IDLE;
-            end case;
+            if Resetn = '0' then
+                bitCounter <= 0;
+                clockCounter <= 0;
+            elsif clockCounter > 0 then
+                clockCounter <= clockCounter - 1; 
+            elsif bitCounter > 0 then
+                bitCounter <= bitCounter - 1;
+            elsif rxSample1 = '0' and rxSample2 = '1' then
+                bitCounter   <= 9;
+                clockCounter <= cClocksPerBit - 1;
+            end if;
         end if;
     end process UartRxStateMachine;
+
+    RxData <= data;
     
 end architecture rtl;

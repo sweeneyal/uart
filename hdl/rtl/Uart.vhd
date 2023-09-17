@@ -20,8 +20,10 @@ architecture rtl of Uart is
     signal txDataOut         : std_logic_vector(7 downto 0);
     signal txDataIn          : std_logic_vector(7 downto 0);
     signal txIsFull          : std_logic;
+    signal txIsNotFull       : std_logic;
     signal txIsEmpty         : std_logic;
     signal rxIsEmpty         : std_logic;
+    signal rxIsNotEmpty      : std_logic;
     signal txEnable          : std_logic;
     signal rxWriteEnable     : std_logic;
     signal txWriteEnable     : std_logic;
@@ -41,7 +43,10 @@ begin
     -- Uart TX
     UartTx : entity work.SimpleUartTx 
     generic map (
-        cClockFrequency => 125000000
+        cClockFrequency => 100e6,
+        cUartBaudRate   => 115200,
+        cNumBits        => 8,
+        cClocksPerBit   => 100e6 / 115200
     )
     port map (
         Clock  => Clock,
@@ -74,7 +79,10 @@ begin
     -- Uart RX
     UartRx : entity work.SimpleUartRx 
     generic map (
-        cClockFrequency => 125000000
+        cClockFrequency => 100e6,
+        cUartBaudRate   => 115200,
+        cNumBits        => 8,
+        cClocksPerBit   => 100e6 / 115200
     )
     port map (
         Clock   => Clock,
@@ -102,6 +110,9 @@ begin
         DataOut       => rxDataOut
     );
 
+    txIsNotFull <= not txIsFull;
+    rxIsNotEmpty <= not rxIsEmpty;
+
     -- Echo
     Echo : entity work.SimpleEcho
     generic map (
@@ -109,13 +120,13 @@ begin
     )
     port map (
         Clock          => Clock,
-        DataAvailable  => not rxIsEmpty,
+        DataAvailable  => rxIsNotEmpty,
         GetNext        => rxPop,
         InputChar      => rxDataOut,
         OutputChar     => txDataIn,
         WriteEnable    => txWriteEnable,
         StartSending   => startSending,
-        WriteAvailable => not txIsFull,
+        WriteAvailable => txIsNotFull,
         NumBytesOut    => numBytesOut
     );
 
