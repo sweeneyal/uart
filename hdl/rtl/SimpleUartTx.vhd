@@ -8,54 +8,101 @@ library universal;
 entity SimpleUartTx is
     generic (
         cClockFrequency : natural := 100000000;
-        cUartBaudRate   : natural := 115200
+        cUartBaudRate   : natural := 9600
     );
     port (
         Clock  : in  std_logic;
-        Resetn : in  std_logic;
         TxData : in  std_logic_vector(7 downto 0);
-        Valid  : in  std_logic;
+        Send   : in  std_logic;
         Tx     : out std_logic;
         Ready  : out std_logic
     );
 end entity SimpleUartTx;
         
-architecture rtl of SimpleUartTx is
-    attribute DONT_TOUCH : boolean;
-    attribute DONT_TOUCH of rtl : architecture is true;
+architecture rtl of SimpleUartTx is    
+    constant cClocksPerBit     : natural := cClockFrequency / cUartBaudRate;
+    constant cClocksPerBit_uns : unsigned(15 downto 0) := unsigned(cClocksPerBit, 16);
+    constant cBitIndexMax      : natural := 10;
+
+    type state_t is (READY_STATE, LOAD_BIT, SEND_BIT);
+    signal state : state_t := READY_STATE;
     
-    constant cClocksPerBit : natural := 100000000 / 115200;
-    signal txDataReg       : std_logic_vector(7 downto 0) := "00000000";
-    signal clockCounter    : natural range 0 to cClocksPerBit - 1 := 0;
-    signal bitCounter      : natural range 0 to 9 := 0;
+    signal txDataReg : std_logic_vector(cBitIndexMax downto 0);
+    signal bitTimer  : unsigned(15 downto 0) := (others => '0');
+    signal bitIndex  : natural range 0 to cBitIndexMax := 0;
+    signal bitDone   : std_logic;
+    signal txBit     : std_logic := '1';
 begin
     
-    UartTxStateMachine : process(Clock)
+    TxStateMachine: process(Clock)
     begin
-        Ready <= Bool2Bit(bitCounter = 0 and clockCounter = 0 and Valid = '0')
-                 or Bool2Bit(bitCounter = 0 and clockCounter = 1);
-
         if rising_edge(Clock) then
-            if Resetn = '0' then
-                clockCounter <= 0;
-                bitCounter   <= 0;
-                Tx           <= '1';
-            elsif clockCounter > 0 then
-                clockCounter <= clockCounter - 1;
-            elsif bitCounter > 0 then
-                Tx <= txDataReg(0);
-                txDataReg    <= '1' & txDataReg(7 downto 1);
-                clockCounter <= cClocksPerBit - 1;
-                bitCounter   <= bitCounter - 1;
-            elsif valid = '1' then
-                clockCounter <= cClocksPerBit - 1;
-                bitCounter   <= 9;
-                Tx           <= '0';
-                txDataReg    <= TxData;
+            case state is
+                when READY_STATE =>
+                    if (Send = '1') then
+                        state <= LOAD_BIT;
+                    end if;
+                when LOAD_BIT =>
+                    state <= SEND_BIT;
+                when SEND_BIT
+                    if (bitDone = '1') then
+                        if (bitIndex = cBitIndexMax) then
+                            state <= READY_STATE;
+                        else
+                            state <= LOAD_BIT;
+                        end if;
+                    end if;
+                when others =>
+                    state <= READY_STATE;
+            end case;
+        end if;
+    end process TxStateMachine;
+
+    BitTimerControl : process(Clock)
+    begin
+        if rising_edge(Clock) then
+            if (state = READY_STATE) or (bitDone = '1') then
+                bitTimer <= (others => '0');
             else
-                Tx <= '1';
+                bitTimer <= bitTimer + 1;
             end if;
         end if;
-    end process UartTxStateMachine ;
+    end process BitTimerControl;
+
+    bitDone <= Bool2Bit(bitTimer = cClocksPerBit_uns);
+
+    BitCountingControl : process(Clock)
+    begin
+        if rising_edge(Clock) then
+            if (state = READY_STATE) then
+                bitIndex <= 0;
+            elsif (state = LOAD_BIT) then
+                bitIndex <= bitIndex + 1;
+            end if;
+        end if;
+    end process BitCountingControl;
+
+    DataLatch: process(Clock)
+    begin
+        if rising_edge(Clock) then
+            if (Send = '1') and (state = READY_STATE) then
+                txDataReg <= '1' & TxData & '0';
+            end if;
+        end if;
+    end process DataLatch;
+
+    TxBitControl: process(Clock)
+    begin
+        if rising_edge(Clock) then
+            if (state=READY_STATE) then
+                txBit <= '1';
+            elsif (state=LOAD_BIT) then
+                txBit <= txDataReg(bitIndex);
+            end if;
+        end if;
+    end process TxBitControl;
+
+    Tx <= txBit;
+    Ready <= Bool2Bit(state = READY_STATE);
     
 end architecture rtl;

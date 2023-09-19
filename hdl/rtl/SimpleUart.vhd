@@ -19,9 +19,9 @@ entity SimpleUart is
 end entity SimpleUart;
 
 architecture rtl of SimpleUart is
-    signal rxDataOut : std_logic_vector(7 downto 0);
-    signal rxDone    : std_logic;
-    signal txDataIn  : std_logic_vector(7 downto 0);
+    signal rxDataOut   : std_logic_vector(7 downto 0);
+    signal rxDone      : std_logic;
+    signal txDataIn    : std_logic_vector(7 downto 0);
     signal txDataValid : std_logic;
     signal txReady     : std_logic;
 
@@ -33,11 +33,10 @@ begin
     SimpleRx : entity work.SimpleUartRx 
     generic map (
         cClockFrequency => 100e6,
-        cUartBaudRate   => 115200
+        cUartBaudRate   => 9600
     )
     port map (
         Clock  => Clock,
-        Resetn => Resetn,
         Rx     => Rx,
         Done   => rxDone,
         RxData => rxDataOut
@@ -69,13 +68,12 @@ begin
     SimpleTx : entity work.SimpleUartTx
     generic map (
         cClockFrequency => 100e6,
-        cUartBaudRate   => 115200
+        cUartBaudRate   => 9600
     )
     port map (
         Clock  => Clock,
-        Resetn => Resetn,
         TxData => txDataIn,
-        Valid  => txDataValid,
+        Send   => txDataValid,
         Tx     => Tx,
         Ready  => txReady
     );
