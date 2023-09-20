@@ -1,3 +1,6 @@
 [submodule "libraries/universal"]
 	path = libraries/universal
 	url = https://github.com/sweeneyal/universal.git
+[submodule "libraries/hdlscriptkit"]
+	path = libraries/hdlscriptkit
+	url = https://github.com/sweeneyal/hdlscriptkit.git

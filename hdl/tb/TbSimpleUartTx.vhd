@@ -1,0 +1,66 @@
+library vunit_lib;
+context vunit_lib.vunit_context;
+
+use std.env.finish;
+
+library ieee;
+    use ieee.std_logic_1164.all;
+    use ieee.numeric_std.all;
+
+library osvvm;
+    use osvvm.TbUtilPkg.all;
+
+library work;
+    use work.TbUartPkg.all;
+
+entity TbSimpleUartTx is
+    generic(runner_cfg : string);
+end entity TbSimpleUartTx;
+
+architecture rtl of TbSimpleUartTx is
+    signal clock   : std_logic;
+    signal txData  : std_logic_vector(7 downto 0);
+    signal send    : std_logic;
+    signal tx      : std_logic;
+    signal txReady : std_logic;
+begin
+    
+    CreateClock(
+        clk    => clock,
+        period => 10 ns
+    );
+
+    dut : entity work.SimpleUartTx generic map(
+        cClockFrequency => 100e6,
+        cUartBaudRate   => 9600
+    )
+    port map(
+        Clock  => clock,
+        TxData => txData,
+        Send   => send,
+        Tx     => tx,
+        Ready  => txReady
+    );
+
+    TestBench: process
+    begin
+        test_runner_setup(runner, runner_cfg);
+        while test_suite loop
+            if run("Nominal_TransmitByte") then
+                work.TbUartPkg.Nominal_TransmitByte(
+                    Clock           => clock,
+                    Tx              => tx,
+                    TxData          => txData,
+                    Send            => send,
+                    TxReady         => txReady,
+                    cClockFrequency => 100e6,
+                    cClockPeriod    => 10 ns,
+                    cUartBaudRate   => 9600
+                );
+            end if;
+        end loop;
+        test_runner_cleanup(runner);
+    end process TestBench;
+
+    test_runner_watchdog(runner, 10 ms);
+end architecture rtl;

@@ -21,13 +21,13 @@ end entity SimpleUartTx;
         
 architecture rtl of SimpleUartTx is    
     constant cClocksPerBit     : natural := cClockFrequency / cUartBaudRate;
-    constant cClocksPerBit_uns : unsigned(15 downto 0) := unsigned(cClocksPerBit, 16);
+    constant cClocksPerBit_uns : unsigned(15 downto 0) := to_unsigned(cClocksPerBit, 16);
     constant cBitIndexMax      : natural := 10;
 
     type state_t is (READY_STATE, LOAD_BIT, SEND_BIT);
     signal state : state_t := READY_STATE;
     
-    signal txDataReg : std_logic_vector(cBitIndexMax downto 0);
+    signal txDataReg : std_logic_vector(cBitIndexMax - 1 downto 0);
     signal bitTimer  : unsigned(15 downto 0) := (others => '0');
     signal bitIndex  : natural range 0 to cBitIndexMax := 0;
     signal bitDone   : std_logic;
@@ -44,7 +44,7 @@ begin
                     end if;
                 when LOAD_BIT =>
                     state <= SEND_BIT;
-                when SEND_BIT
+                when SEND_BIT =>
                     if (bitDone = '1') then
                         if (bitIndex = cBitIndexMax) then
                             state <= READY_STATE;

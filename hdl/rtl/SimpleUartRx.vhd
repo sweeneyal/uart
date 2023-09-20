@@ -2,6 +2,9 @@ library ieee;
     use ieee.std_logic_1164.all;
     use ieee.numeric_std.all;
 
+library universal;
+    use universal.TypeUtilityPkg.all;
+
 entity SimpleUartRx is
     generic (
         cClockFrequency : natural := 100000000;
@@ -17,7 +20,8 @@ end entity SimpleUartRx;
 
 architecture rtl of SimpleUartRx is
     constant cClocksPerBit     : natural := cClockFrequency / cUartBaudRate;
-    constant cClocksPerBit_uns : unsigned(15 downto 0) := unsigned(cClocksPerBit, 16);
+    constant cClocksPerBit_uns : unsigned(15 downto 0) := to_unsigned(cClocksPerBit, 16);
+    constant cSampleClock_uns  : unsigned(15 downto 0) := to_unsigned(cClocksPerBit / 2, 16);
     constant cBitIndexMax      : natural := 7;
 
     type state_t is (IDLE, START_BIT, DATA, STOP_BIT);
@@ -28,7 +32,9 @@ architecture rtl of SimpleUartRx is
     signal bitTimer       : unsigned(15 downto 0) := (others => '0');
     signal bitIndex       : natural range 0 to cBitIndexMax := 0;
     signal bitDone        : std_logic;
+    signal bitSample      : std_logic;
     signal rxDataReg      : std_logic_vector(cBitIndexMax downto 0);
+    signal badReceive     : std_logic := '0';
 begin
     
     ClockDomainCrosser: process(Clock)
@@ -38,7 +44,7 @@ begin
             rxSampleVector(1) <= rxSampleVector(0);
             rxSampleVector(0) <= Rx;
         end if;
-    end process SampleRx;
+    end process ClockDomainCrosser;
 
     RxStateMachine: process(Clock)
     begin
@@ -71,7 +77,7 @@ begin
     BitTimerControl : process(Clock)
     begin
         if rising_edge(Clock) then
-            if (state = READY_STATE) or (bitDone = '1') then
+            if (state = IDLE) or (bitDone = '1') then
                 bitTimer <= (others => '0');
             else
                 bitTimer <= bitTimer + 1;
@@ -79,14 +85,15 @@ begin
         end if;
     end process BitTimerControl;
 
-    bitDone <= Bool2Bit(bitTimer = cClocksPerBit_uns);
+    bitDone   <= Bool2Bit(bitTimer = cClocksPerBit_uns);
+    bitSample <= Bool2Bit(bitTimer = cSampleClock_uns);
 
     BitCountingControl : process(Clock)
     begin
         if rising_edge(Clock) then
-            if (state = IDLE) or (bitDone = '1') then
+            if (state = IDLE) then
                 bitIndex <= 0;
-            elsif (state = DATA) then
+            elsif (state = DATA) and (bitDone = '1') then
                 bitIndex <= bitIndex + 1;
             end if;
         end if;
@@ -95,13 +102,31 @@ begin
     RxBitControl: process(Clock)
     begin
         if rising_edge(Clock) then
-            if (state = DATA) and (bitDone = '1') then
+            -- Sample bit in the middle of the bit period, as it will be more consistent.
+            if (state = DATA) and (bitSample = '1') then
                 rxDataReg(bitIndex) <= rxd;
             end if;
         end if;
     end process RxBitControl;
 
+    RxProtocolVerification: process(Clock)
+    begin
+        if rising_edge(Clock) then
+            if (state = IDLE) then
+                badReceive <= '0';
+            elsif (state = START_BIT) and (bitSample = '1') then
+                if (rxd = '1') then
+                    badReceive <= '1';
+                end if;
+            elsif (state = STOP_BIT) and (bitSample = '1') then
+                if (rxd = '0') then
+                    badReceive <= '1';
+                end if;                
+            end if;
+        end if;
+    end process RxProtocolVerification;
+
     RxData <= rxDataReg;
-    Done   <= Bool2Bit(state = STOP_BIT and bitDone = '1');
+    Done   <= Bool2Bit(state = STOP_BIT and bitDone = '1' and badReceive = '0');
     
 end architecture rtl;
