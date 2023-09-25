@@ -22,14 +22,16 @@ architecture rtl of SimpleUart is
     signal rxDataOut   : std_logic_vector(7 downto 0);
     signal rxDone      : std_logic;
     signal txDataIn    : std_logic_vector(7 downto 0);
-    signal txDataValid : std_logic;
     signal txReady     : std_logic;
+    signal txIsEmpty   : std_logic;
+    signal txPop       : std_logic;
+    signal txPopd      : std_logic;
 
     type state_t is (IDLE, WAIT_FOR_DONE);
     signal state : state_t;
 begin
     
-    -- SimpleUart TX
+    -- SimpleUart RX
     SimpleRx : entity work.SimpleUartRx 
     generic map (
         cClockFrequency => 100e6,
@@ -42,29 +44,7 @@ begin
         RxData => rxDataOut
     );
 
-    RxDataBuff: process(Clock)
-    begin
-        if rising_edge(Clock) then
-            if Resetn = '0' then
-                state       <= IDLE;
-                txDataIn    <= (others => '0');
-                txDataValid <= '0';
-            elsif rxDone = '1' and state = IDLE then
-                txDataIn  <= rxDataOut;
-                if txReady = '0' then
-                    state       <= WAIT_FOR_DONE;
-                    txDataValid <= '0';
-                else
-                    txDataValid <= '1';
-                end if;
-            elsif state = WAIT_FOR_DONE and txReady = '1' then
-                txDataValid <= '1';
-                state       <= IDLE;
-            end if;
-        end if;
-    end process RxDataBuff;
-
-    -- Uart RX
+    -- Uart TX
     SimpleTx : entity work.SimpleUartTx
     generic map (
         cClockFrequency => 100e6,
@@ -73,7 +53,7 @@ begin
     port map (
         Clock  => Clock,
         TxData => txDataIn,
-        Send   => txDataValid,
+        Send   => txPopd,
         Tx     => Tx,
         Ready  => txReady
     );
@@ -90,24 +70,33 @@ begin
         Leds    => Leds
     );
 
-    -- -- TX FIFO
-    -- TxFifo : entity work.SimpleFifo
-    -- generic map (
-    --     cAddressWidth => cAddressWidth
-    -- )
-    -- port map (
-    --     Clock         => Clock,
-    --     Resetn        => Resetn,
-    --     SoftReset     => '0',
-    --     IsAlmostEmpty => open,
-    --     IsAlmostFull  => open,
-    --     IsEmpty       => txIsEmpty,
-    --     IsFull        => open,
-    --     Pop           => txPop,
-    --     WriteEnable   => rxDone,
-    --     DataIn        => rxDataOut,
-    --     DataOut       => txDataIn
-    -- );
+    txPop <= Bool2Bit(txReady = '1' and txIsEmpty = '0');
+
+    ValidSetting: process(Clock)
+    begin
+        if rising_edge(Clock) then
+            txPopd <= txPop;
+        end if;
+    end process ValidSetting;
+
+    -- TX FIFO
+    TxFifo : entity work.SimpleFifo
+    generic map (
+        cAddressWidth => cAddressWidth
+    )
+    port map (
+        Clock         => Clock,
+        Resetn        => Resetn,
+        SoftReset     => '0',
+        IsAlmostEmpty => open,
+        IsAlmostFull  => open,
+        IsEmpty       => txIsEmpty,
+        IsFull        => open,
+        Pop           => txPop,
+        WriteEnable   => rxDone,
+        DataIn        => rxDataOut,
+        DataOut       => txDataIn
+    );
 
     -- ClockedEnabling: process(Clock)
     -- begin
